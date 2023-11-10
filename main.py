@@ -4,6 +4,7 @@ from mediapipe.tasks.python import vision
 from mediapipe.framework.formats import landmark_pb2
 import mediapipe as mp
 import numpy as np
+import pyautogui
 import cv2
 
 MARGIN = 10  # pixels
@@ -47,25 +48,38 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
   return annotated_image
 
-cap = cv2.VideoCapture(1)
+def mouse_move(detection_result):
+  hand_landmarks_list = detection_result.hand_landmarks
+  
+  if len(hand_landmarks_list) == 1:
+    points = hand_landmarks_list[0]
+    wrist = points[4]
+    screen_width, screen_height = pyautogui.size()
+    move_x = 0.9272 * wrist.x + 0.3746 * wrist.y
+    move_y = 0.9272 * wrist.y - 0.3746 * wrist.x
+    pyautogui.moveTo(screen_width * move_x, screen_height * move_y)
 
-roi_top = 100
-roi_bottom = 300
-roi_right = 300
-roi_left = 600
+# def mouse_click_left(detection_result):
+
+# def mouse_click_right(detection_result):
+
+cap = cv2.VideoCapture(1)
+cap.set(3, 320)
+cap.set(4, 240)
 
 while True:
   ret, frame = cap.read()
   frame = cv2.flip(frame, 1)
 
   base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-  options = vision.HandLandmarkerOptions(base_options=base_options,
-                                        num_hands=2)
+  options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=1)
   detector = vision.HandLandmarker.create_from_options(options)
 
   image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
 
   detection_result = detector.detect(image)
+
+  mouse_move(detection_result)
 
   annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
   cv2.imshow('Hand Landmarker', annotated_image)
