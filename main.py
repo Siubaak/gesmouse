@@ -1,91 +1,52 @@
-from mediapipe import solutions
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-from mediapipe.framework.formats import landmark_pb2
-import mediapipe as mp
-import numpy as np
-import pyautogui
 import cv2
+import pyautogui
+import mediapipe as mp
 
-MARGIN = 10  # pixels
-FONT_SIZE = 1
-FONT_THICKNESS = 1
-HANDEDNESS_TEXT_COLOR = (88, 205, 54) # vibrant green
+cap = cv2.VideoCapture(0)
+cap.set(3, 240)
+cap.set(4, 320)
+mpHands = mp.solutions.hands
+hands = mpHands.Hands()
+mpDraw = mp.solutions.drawing_utils
+screenWidth, screenHeight = pyautogui.size()
+clicking = 0
 
-def draw_landmarks_on_image(rgb_image, detection_result):
-  hand_landmarks_list = detection_result.hand_landmarks
-  handedness_list = detection_result.handedness
-  annotated_image = np.copy(rgb_image)
+def mouseMove(x, y):
+    curX, curY = pyautogui.position()
+    moveX, moveY = max(min(screenWidth * (3 - (x * 5)), screenWidth - 1), 0), min(screenHeight * (1 - y * 3), screenHeight - 1)
+    if abs(moveX - curX) > 5 or abs(moveY - curY) > 5:
+        pyautogui.moveTo(moveX, moveY)
 
-  # Loop through the detected hands to visualize.
-  for idx in range(len(hand_landmarks_list)):
-    hand_landmarks = hand_landmarks_list[idx]
-    handedness = handedness_list[idx]
 
-    # Draw the hand landmarks.
-    hand_landmarks_proto = landmark_pb2.NormalizedLandmarkList()
-    hand_landmarks_proto.landmark.extend([
-      landmark_pb2.NormalizedLandmark(x=landmark.x, y=landmark.y, z=landmark.z) for landmark in hand_landmarks
-    ])
-    solutions.drawing_utils.draw_landmarks(
-      annotated_image,
-      hand_landmarks_proto,
-      solutions.hands.HAND_CONNECTIONS,
-      solutions.drawing_styles.get_default_hand_landmarks_style(),
-      solutions.drawing_styles.get_default_hand_connections_style())
+def mouseClick(baseX, baseY, x, y):
+    global clicking
+    delta = (baseX - x) ** 2 + (baseY - y) ** 2
+    if delta < 0.002 and clicking == 0:
+        pyautogui.mouseDown()
+        clicking = 1
+    elif delta > 0.0021 and clicking == 1:
+        pyautogui.mouseUp()
+        clicking = 0
 
-    # Get the top left corner of the detected hand's bounding box.
-    height, width, _ = annotated_image.shape
-    x_coordinates = [landmark.x for landmark in hand_landmarks]
-    y_coordinates = [landmark.y for landmark in hand_landmarks]
-    text_x = int(min(x_coordinates) * width)
-    text_y = int(min(y_coordinates) * height) - MARGIN
-
-    # Draw handedness (left or right hand) on the image.
-    cv2.putText(annotated_image, f"{handedness[0].category_name}",
-                (text_x, text_y), cv2.FONT_HERSHEY_DUPLEX,
-                FONT_SIZE, HANDEDNESS_TEXT_COLOR, FONT_THICKNESS, cv2.LINE_AA)
-
-  return annotated_image
-
-def mouse_move(detection_result):
-  hand_landmarks_list = detection_result.hand_landmarks
-  
-  if len(hand_landmarks_list) == 1:
-    points = hand_landmarks_list[0]
-    wrist = points[4]
-    screen_width, screen_height = pyautogui.size()
-    move_x = 0.9272 * wrist.x + 0.3746 * wrist.y
-    move_y = 0.9272 * wrist.y - 0.3746 * wrist.x
-    pyautogui.moveTo(screen_width * move_x, screen_height * move_y)
-
-# def mouse_click_left(detection_result):
-
-# def mouse_click_right(detection_result):
-
-cap = cv2.VideoCapture(1)
-cap.set(3, 320)
-cap.set(4, 240)
 
 while True:
-  ret, frame = cap.read()
-  frame = cv2.flip(frame, 1)
+    ret, img = cap.read()
+    if ret:
+        imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        result = hands.process(imgRGB)
+        if result.multi_hand_landmarks:
+            for handLms in result.multi_hand_landmarks:
+                mpDraw.draw_landmarks(img, handLms, mpHands.HAND_CONNECTIONS)
+                moveBase = handLms.landmark[0]
+                clickBase = handLms.landmark[4]
+                leftClkBase = handLms.landmark[8]
+                mouseMove(moveBase.x, moveBase.y)
+                mouseClick(clickBase.x, clickBase.y, leftClkBase.x, leftClkBase.y)
 
-  base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
-  options = vision.HandLandmarkerOptions(base_options=base_options, num_hands=1)
-  detector = vision.HandLandmarker.create_from_options(options)
+        cv2.imshow('img', img)
 
-  image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-
-  detection_result = detector.detect(image)
-
-  mouse_move(detection_result)
-
-  annotated_image = draw_landmarks_on_image(image.numpy_view(), detection_result)
-  cv2.imshow('Hand Landmarker', annotated_image)
-
-  if cv2.waitKey(1) & 0xFF == ord('q'):
-    break
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
 cv2.destroyAllWindows()

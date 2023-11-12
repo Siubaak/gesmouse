@@ -1,3 +1,3 @@
 #!/bin/sh
 
-pip3 install opencv-python
+pip install opencv-python mediapipe pyautogui
